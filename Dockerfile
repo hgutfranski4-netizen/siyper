@@ -16,11 +16,10 @@ RUN python3 -m pip install --break-system-packages -r python_monitor/requirement
 RUN python3 -m pip list
 
 COPY package*.json ./
+COPY . .
 RUN npm ci --omit=dev
 
-COPY . .
-
-# Build the app
+# Build the app (if not already built by postinstall)
 RUN npm run build
 
 # Start the app

@@ -321,14 +321,12 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY . .
 RUN npm install
 
 # Copy requirements and install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application
-COPY . .
 
 # Build the frontend
 RUN npm run build
@@ -600,6 +598,13 @@ export default function App() {
     const fetchConfig = async () => {
       try {
         const response = await fetch('/api/config');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("Received non-JSON response from server");
+        }
         const config = await response.json();
         if (config.apiId) setApiId(config.apiId);
         if (config.apiHash) setApiHash(config.apiHash);
@@ -672,6 +677,13 @@ export default function App() {
     const fetchStatus = async () => {
       try {
         const response = await fetch('/api/status');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("Received non-JSON response from server");
+        }
         const data = await response.json();
         setIsBotRunning(data.isBotRunning);
         setBotMode(data.botMode);
