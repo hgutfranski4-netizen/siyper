@@ -72,6 +72,12 @@ async function startServer() {
       // Spawn Python bot process
       botProcess = spawn('python3', ['python_monitor/monitor.py'], { env });
       
+      botProcess.on('error', (err) => {
+        isBotRunning = false;
+        botLogs.push(`[ERROR] Nie udało się uruchomić procesu Pythona: ${err.message}`);
+        botProcess = null;
+      });
+
       botProcess.stdout?.on('data', (data) => {
         botLogs.push(`[BOT] ${data.toString()}`);
       });

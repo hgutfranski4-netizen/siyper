@@ -1,6 +1,6 @@
 telethon
 pyTelegramBotAPI
+telebot
 undetected-chromedriver
 selenium
-sqlite3
 requests
