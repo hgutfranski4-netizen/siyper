@@ -6,7 +6,7 @@ import { open } from "sqlite";
 import pg from "pg";
 import path from "path";
 import { fileURLToPath } from "url";
-import { SniperBot } from "./bot";
+import { SniperBot } from "./bot.ts";
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 
