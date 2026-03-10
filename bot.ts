@@ -1,6 +1,6 @@
-import { Api, TelegramClient } from "telegram";
+import { Api, TelegramClient, errors } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
-import { NewMessage } from "telegram/events/index.js";
+import TelegramBot from "node-telegram-bot-api";
 
 interface BotConfig {
   apiId: string;
@@ -36,14 +36,17 @@ export class SniperBot {
     const apiHash = this.config.apiHash;
     const stringSession = new StringSession(this.config.stringSession || "");
 
-    this.log(`[SYSTEM] Inicjalizacja bota Node.js...`);
-
+    this.log(`[SYSTEM] Łączenie z serwerami Telegram...`);
     try {
       this.client = new TelegramClient(stringSession, apiId, apiHash, {
-        connectionRetries: 5,
+        connectionRetries: 10,
+        requestRetries: 5,
+        timeout: 30000,
+        useIPV6: false,
       });
 
       await this.client.connect();
+      this.log(`[SYSTEM] Połączono pomyślnie.`);
 
       const authorized = await this.client.isUserAuthorized();
       if (!authorized) {
@@ -85,11 +88,17 @@ export class SniperBot {
             await this.client.invoke(new Api.contacts.ResolveUsername({ username }));
             // If it resolves, it's taken
           } catch (error: any) {
-            if (error.errorMessage === 'USERNAME_NOT_OCCUPIED') {
+            if (error instanceof errors.FloodWaitError) {
+              const waitTime = error.seconds;
+              this.log(`[WARNING] FloodWait: Muszę poczekać ${waitTime}s przed kolejnym sprawdzeniem.`);
+              await new Promise(r => setTimeout(r, waitTime * 1000));
+            } else if (error.errorMessage === 'USERNAME_NOT_OCCUPIED') {
               this.log(`[BOT] 🚀 Username @${username} jest WOLNY! Próba przejęcia...`);
               
               try {
-                // Try to claim by creating a channel
+                this.log(`[BOT] 🛠 Tworzenie kanału publicznego dla @${username}...`);
+                
+                // 1. Create a channel
                 const result = await this.client.invoke(new Api.channels.CreateChannel({
                   title: `Reserved @${username}`,
                   about: `Sniped by SniperBot`,
@@ -97,20 +106,36 @@ export class SniperBot {
                 }));
                 
                 if (result instanceof Api.Updates) {
-                  const channel = result.chats[0] as Api.Channel;
+                  // Find the channel in the updates
+                  const channel = result.chats.find(c => c instanceof Api.Channel) as Api.Channel;
+                  
+                  if (!channel) {
+                    throw new Error("Nie znaleziono kanału w odpowiedzi serwera.");
+                  }
+
+                  this.log(`[BOT] 🔗 Ustawianie nazwy użytkownika @${username}...`);
+                  
+                  // 2. Set the username (this makes it public)
                   await this.client.invoke(new Api.channels.UpdateUsername({
                     channel: channel,
                     username: username
                   }));
                   
-                  this.log(`[BOT] ✅ SUKCES! Przejęto @${username} do nowego kanału.`);
+                  this.log(`[BOT] ✅ SUKCES! Przejęto @${username}.`);
                   this.stats.claims++;
+                  
+                  // Send notification
+                  await this.sendNotification(`🚀 **SUKCES!**\nPrzejęto username: @${username}\nCzas: ${new Date().toLocaleString()}`);
                   
                   // Remove from list
                   usernames = usernames.filter(u => u !== username);
                 }
               } catch (claimError: any) {
-                this.log(`[ERROR] Nie udało się przejąć @${username}: ${claimError.message}`);
+                if (claimError.errorMessage === 'CHANNELS_ADMIN_PUBLIC_TOO_MUCH') {
+                  this.log(`[ERROR] Limit kanałów publicznych osiągnięty! Usuń niepotrzebne kanały publiczne.`);
+                } else {
+                  this.log(`[ERROR] Nie udało się przejąć @${username}: ${claimError.message}`);
+                }
               }
             }
           }
@@ -123,6 +148,18 @@ export class SniperBot {
       
       this.stats.uptime = Math.floor((Date.now() - this.startTime) / 1000);
       await new Promise(r => setTimeout(r, delay));
+    }
+  }
+
+  private async sendNotification(message: string) {
+    if (this.config.telegramBotToken && this.config.telegramChatId) {
+      try {
+        const bot = new TelegramBot(this.config.telegramBotToken, { polling: false });
+        await bot.sendMessage(this.config.telegramChatId, message, { parse_mode: 'Markdown' });
+        this.log(`[SYSTEM] Powiadomienie wysłane na Telegram.`);
+      } catch (error: any) {
+        this.log(`[ERROR] Błąd wysyłania powiadomienia: ${error.message}`);
+      }
     }
   }
 

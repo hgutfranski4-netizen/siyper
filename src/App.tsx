@@ -431,6 +431,7 @@ export default function App() {
   const [proxyType, setProxyType] = useState(() => localStorage.getItem('proxyType') || 'socks5');
   const [proxyHost, setProxyHost] = useState(() => localStorage.getItem('proxyHost') || '');
   const [proxyPort, setProxyPort] = useState(() => localStorage.getItem('proxyPort') || '');
+  const [databaseUrl, setDatabaseUrl] = useState(() => localStorage.getItem('databaseUrl') || '');
 
   // Name Generator State
   const [genLength, setGenLength] = useState(4);
@@ -465,7 +466,11 @@ export default function App() {
         setAuthStep('idle');
       }
     } catch (e: any) {
-      setAuthError(e.message);
+      if (e.message.includes('TIMEOUT')) {
+        setAuthError('Błąd: Przekroczono czas połączenia (TIMEOUT). Telegram nie odpowiada. Spróbuj ponownie za chwilę.');
+      } else {
+        setAuthError(e.message);
+      }
       setAuthStep('idle');
     }
   };
@@ -499,7 +504,11 @@ export default function App() {
         setAuthStep('waiting');
       }
     } catch (e: any) {
-      setAuthError(e.message);
+      if (e.message.includes('TIMEOUT')) {
+        setAuthError('Błąd: Przekroczono czas połączenia (TIMEOUT). Spróbuj ponownie.');
+      } else {
+        setAuthError(e.message);
+      }
       setAuthStep('waiting');
     }
   };
@@ -604,6 +613,7 @@ export default function App() {
         if (config.proxyType) setProxyType(config.proxyType);
         if (config.proxyHost) setProxyHost(config.proxyHost);
         if (config.proxyPort) setProxyPort(config.proxyPort);
+        if (config.databaseUrl) setDatabaseUrl(config.databaseUrl);
       } catch (error) {
         console.error('Failed to fetch config:', error);
       }
@@ -624,6 +634,7 @@ export default function App() {
     localStorage.setItem('proxyType', proxyType);
     localStorage.setItem('proxyHost', proxyHost);
     localStorage.setItem('proxyPort', proxyPort);
+    localStorage.setItem('databaseUrl', databaseUrl);
 
     // Save to server with debounce
     const timeout = setTimeout(async () => {
@@ -634,7 +645,7 @@ export default function App() {
           body: JSON.stringify({
             apiId, apiHash, phone, telegramBotToken, telegramChatId,
             usernames, delay, stringSession, useProxy, proxyType,
-            proxyHost, proxyPort
+            proxyHost, proxyPort, databaseUrl
           })
         });
       } catch (error) {
@@ -643,7 +654,7 @@ export default function App() {
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [apiId, apiHash, phone, telegramBotToken, telegramChatId, usernames, delay, stringSession, useProxy, proxyType, proxyHost, proxyPort]);
+  }, [apiId, apiHash, phone, telegramBotToken, telegramChatId, usernames, delay, stringSession, useProxy, proxyType, proxyHost, proxyPort, databaseUrl]);
 
   // Bot Simulation State (now fetched from backend)
   const [isBotRunning, setIsBotRunning] = useState(false);
@@ -714,6 +725,7 @@ API_HASH=${apiHash || ''}
 PHONE=${phone || ''}
 TELEGRAM_BOT_TOKEN=${telegramBotToken || ''}
 TELEGRAM_CHAT_ID=${telegramChatId || ''}
+DATABASE_URL=${databaseUrl || ''}
 STRING_SESSION=${stringSession || ''}
 SESSION_FILE=accounts/main
 TARGET_USERNAMES=${usernameList}
@@ -1061,6 +1073,17 @@ CHECK_INTERVAL=${delay || '0.5'}
                         value={telegramChatId}
                         onChange={(e) => setTelegramChatId(e.target.value)}
                         placeholder="np. 123456789"
+                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5">Database URL (PostgreSQL)</label>
+                      <input 
+                        type="text" 
+                        value={databaseUrl}
+                        onChange={(e) => setDatabaseUrl(e.target.value)}
+                        placeholder="postgresql://user:password@host:port/dbname"
                         className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono"
                       />
                     </div>

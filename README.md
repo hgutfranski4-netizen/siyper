@@ -1,20 +1,37 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Telegram Sniper Bot - Railway Deployment Guide
 
-# Run and deploy your AI Studio app
+Ten projekt jest w pełni przygotowany do wdrożenia na platformie **Railway**.
 
-This contains everything you need to run your app locally.
+## Kroki wdrożenia:
 
-View your app in AI Studio: https://ai.studio/apps/d7e96f9a-5d65-45a6-a121-b14b4ffcd3d7
+1. **Przygotuj repozytorium:**
+   - Wrzuć kod na swoje repozytorium GitHub.
 
-## Run Locally
+2. **Wdrożenie na Railway:**
+   - Zaloguj się na [Railway.app](https://railway.app/).
+   - Kliknij **"New Project"** -> **"Deploy from GitHub repo"**.
+   - Wybierz swoje repozytorium.
 
-**Prerequisites:**  Node.js
+3. **Konfiguracja Bazy Danych:**
+   - W widoku projektu Railway kliknij **"Add Service"** -> **"Database"** -> **"Add PostgreSQL"**.
+   - Railway automatycznie doda zmienną `DATABASE_URL` do Twojej aplikacji.
 
+4. **Zmienne Środowiskowe:**
+   - Przejdź do zakładki **Variables** w swojej aplikacji na Railway.
+   - Dodaj następujące zmienne (możesz je też skonfigurować później w panelu bota):
+     - `TELEGRAM_API_ID` (opcjonalnie)
+     - `TELEGRAM_API_HASH` (opcjonalnie)
+     - `TELEGRAM_BOT_TOKEN` (opcjonalnie - do powiadomień)
+     - `TELEGRAM_CHAT_ID` (opcjonalnie - do powiadomień)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+5. **Uruchomienie:**
+   - Railway automatycznie wykryje `package.json`, zainstaluje zależności, zbuduje frontend (`npm run build`) i uruchomi serwer (`npm start`).
+   - Aplikacja będzie dostępna pod adresem wygenerowanym przez Railway (zakładka **Settings** -> **Public Networking** -> **Generate Domain**).
+
+## Funkcje Railway:
+- **Automatyczny HTTPS:** Railway zapewnia certyfikat SSL.
+- **PostgreSQL:** Dane bota (konfiguracja, statystyki) są bezpiecznie przechowywane w chmurze.
+- **Skalowalność:** Bot działa 24/7 bez Twojego udziału.
+
+## Uwaga:
+Pamiętaj, aby w panelu bota (Konfigurator) wygenerować i zapisać `StringSession`, aby bot mógł działać w tle po zamknięciu przeglądarki.

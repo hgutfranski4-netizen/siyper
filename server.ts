@@ -4,9 +4,9 @@ import axios from "axios";
 import TelegramBot from "node-telegram-bot-api";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import pg from "pg";
 import path from "path";
 import { fileURLToPath } from "url";
-import { spawn, ChildProcess } from "child_process";
 import { SniperBot } from "./bot";
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
@@ -18,37 +18,134 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Initialize DB
-  const db = await open({
-    filename: './database.db',
-    driver: sqlite3.Database
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[SYSTEM] Server listening on http://0.0.0.0:${PORT}`);
   });
-  await db.exec('CREATE TABLE IF NOT EXISTS seen_usernames (username TEXT PRIMARY KEY)');
-  await db.exec('CREATE TABLE IF NOT EXISTS bot_config (id INTEGER PRIMARY KEY, key TEXT UNIQUE, value TEXT)');
+
+  console.log("[SYSTEM] Starting server initialization...");
+
+  // Health check route - MUST be first
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", uptime: process.uptime() });
+  });
+
+  // Database Abstraction
+  let db: any = {
+    exec: async () => {},
+    all: async () => [],
+    run: async () => {}
+  };
+  const isPostgres = !!process.env.DATABASE_URL;
+
+  // Initialize DB in background
+  (async () => {
+    try {
+      if (isPostgres) {
+        console.log("[SYSTEM] Attempting to connect to PostgreSQL...");
+        const pool = new pg.Pool({
+          connectionString: process.env.DATABASE_URL,
+          ssl: { rejectUnauthorized: false }
+        });
+        
+        await pool.query('SELECT NOW()');
+        console.log("[SYSTEM] PostgreSQL connected successfully.");
+        
+        db.exec = async (sql: string) => {
+          const pgSql = sql.replace(/INTEGER PRIMARY KEY/g, 'SERIAL PRIMARY KEY')
+                           .replace(/TEXT PRIMARY KEY/g, 'TEXT PRIMARY KEY');
+          await pool.query(pgSql);
+        };
+        db.all = async (sql: string, params: any[] = []) => {
+          const res = await pool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
+          return res.rows;
+        };
+        db.run = async (sql: string, params: any[] = []) => {
+          let pgSql = sql.replace(/\?/g, (_, i) => `$${i + 1}`);
+          if (pgSql.includes('INSERT OR REPLACE')) {
+            const tableName = pgSql.match(/INTO (\w+)/)?.[1];
+            const columns = pgSql.match(/\((.*?)\)/)?.[1];
+            if (tableName && columns) {
+               const colArr = columns.split(',').map(c => c.trim());
+               const conflictCol = colArr[0];
+               pgSql = pgSql.replace('INSERT OR REPLACE', 'INSERT') + 
+                       ` ON CONFLICT (${conflictCol}) DO UPDATE SET ` + 
+                       colArr.slice(1).map((c, i) => `${c} = EXCLUDED.${c}`).join(', ');
+            }
+          }
+          await pool.query(pgSql, params);
+        };
+      } else {
+        console.log("[SYSTEM] Using SQLite database.");
+        const sqliteDb = await open({
+          filename: './database.db',
+          driver: sqlite3.Database
+        });
+        db.exec = (sql: string) => sqliteDb.exec(sql);
+        db.all = (sql: string, params: any[] = []) => sqliteDb.all(sql, params);
+        db.run = (sql: string, params: any[] = []) => sqliteDb.run(sql, params);
+      }
+
+      await db.exec('CREATE TABLE IF NOT EXISTS seen_usernames (username TEXT PRIMARY KEY)');
+      await db.exec('CREATE TABLE IF NOT EXISTS bot_config (key TEXT PRIMARY KEY, value TEXT)');
+      console.log("[SYSTEM] Database tables initialized.");
+    } catch (dbError: any) {
+      console.error("[DATABASE ERROR]", dbError);
+      app.get("/api/db-error", (req, res) => res.json({ error: dbError.message }));
+    }
+  })();
 
   // API Route: Get Config
   app.get("/api/config", async (req, res) => {
-    const rows = await db.all('SELECT key, value FROM bot_config');
-    const config = rows.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
-    res.json(config);
+    try {
+      const rows = await db.all('SELECT key, value FROM bot_config');
+      const config = rows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
+      res.json(config);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // API Route: Save Config
   app.post("/api/config", express.json(), async (req, res) => {
-    const config = req.body;
-    for (const [key, value] of Object.entries(config)) {
-      await db.run('INSERT OR REPLACE INTO bot_config (key, value) VALUES (?, ?)', [key, String(value)]);
+    try {
+      const config = req.body;
+      for (const [key, value] of Object.entries(config)) {
+        await db.run('INSERT OR REPLACE INTO bot_config (key, value) VALUES (?, ?)', [key, String(value)]);
+      }
+      bot = null; // Reset bot instance to pick up new token if changed
+      res.json({ status: 'success' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
     }
-    res.json({ status: 'success' });
   });
 
   // Telegram Bot
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
   let bot: TelegramBot | null = null;
-  if (botToken) {
-    bot = new TelegramBot(botToken, { polling: false });
-  }
+  
+  const getBot = async () => {
+    if (bot) return bot;
+    
+    let token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) {
+      const rows = await db.all('SELECT value FROM bot_config WHERE key = ?', ['telegramBotToken']);
+      if (rows.length > 0) token = rows[0].value;
+    }
+    
+    if (token) {
+      bot = new TelegramBot(token, { polling: false });
+      return bot;
+    }
+    return null;
+  };
+
+  const getChatId = async () => {
+    let id = process.env.TELEGRAM_CHAT_ID;
+    if (!id) {
+      const rows = await db.all('SELECT value FROM bot_config WHERE key = ?', ['telegramChatId']);
+      if (rows.length > 0) id = rows[0].value;
+    }
+    return id;
+  };
 
   // Bot State
   let isBotRunning = false;
@@ -64,7 +161,12 @@ async function startServer() {
   app.post("/api/auth/send-code", express.json(), async (req, res) => {
     const { phone, apiId, apiHash } = req.body;
     try {
-      const client = new TelegramClient(new StringSession(""), parseInt(apiId), apiHash, { connectionRetries: 5 });
+      const client = new TelegramClient(new StringSession(""), parseInt(apiId), apiHash, { 
+        connectionRetries: 10,
+        requestRetries: 5,
+        timeout: 30000,
+        useIPV6: false,
+      });
       await client.connect();
       const result: any = await client.invoke(new Api.auth.SendCode({
         phoneNumber: phone,
@@ -155,6 +257,7 @@ async function startServer() {
       for (const [key, value] of Object.entries(config)) {
         await db.run('INSERT OR REPLACE INTO bot_config (key, value) VALUES (?, ?)', [key, String(value)]);
       }
+      bot = null; // Reset bot instance
 
       // Initialize and start Node.js bot
       sniperBot = new SniperBot(config, (log) => {
@@ -195,10 +298,6 @@ async function startServer() {
       res.sendFile(path.resolve(__dirname, "dist", "index.html"));
     });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
 }
 
 startServer();
