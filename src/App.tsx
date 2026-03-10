@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, Settings, FileCode2, BookOpen, Copy, Check, Download, ShieldAlert, ChevronRight, FileText, Activity, Play, Square, RefreshCw, Zap, Clock, Shield } from 'lucide-react';
+import { Terminal, Settings, FileCode2, BookOpen, Copy, Check, Download, ShieldAlert, ChevronRight, FileText, Activity, Play, Square, RefreshCw, Zap, Clock, Shield, Menu, X } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
 const SNIPER_PY = `import asyncio
@@ -415,6 +415,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('config');
   const [activeFile, setActiveFile] = useState('main.py');
   const [copied, setCopied] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Config state
   const [apiId, setApiId] = useState(() => localStorage.getItem('apiId') || '34215345');
@@ -781,48 +782,68 @@ CHECK_INTERVAL=${delay || '0.5'}
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-gray-200 font-sans flex flex-col md:flex-row">
+    <div className="h-screen bg-[#0a0a0a] text-gray-200 font-sans flex flex-col md:flex-row overflow-hidden">
+      {/* Mobile Header */}
+      <div className="md:hidden bg-[#111111] border-b border-white/10 p-4 flex items-center justify-between z-20">
+        <div className="flex items-center gap-3 text-emerald-500">
+          <Terminal size={24} />
+          <h1 className="font-bold text-lg tracking-tight text-white">TG Sniper</h1>
+        </div>
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-gray-400 hover:text-white">
+          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </div>
+
       {/* Sidebar */}
-      <div className="w-full md:w-64 bg-[#111111] border-r border-white/10 flex flex-col">
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3 text-emerald-500 mb-2">
-            <Terminal size={24} />
-            <h1 className="font-bold text-lg tracking-tight text-white">TG Sniper</h1>
+      <div className={`
+        fixed inset-y-0 left-0 z-30 w-64 bg-[#111111] border-r border-white/10 flex flex-col transform transition-transform duration-300 ease-in-out
+        md:relative md:translate-x-0
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="p-6 border-b border-white/10 flex justify-between items-center">
+          <div>
+            <div className="flex items-center gap-3 text-emerald-500 mb-2">
+              <Terminal size={24} />
+              <h1 className="font-bold text-lg tracking-tight text-white">TG Sniper</h1>
+            </div>
+            <p className="text-xs text-gray-500 font-mono">v2.0.0 Modular</p>
           </div>
-          <p className="text-xs text-gray-500 font-mono">v2.0.0 Modular</p>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-gray-400 hover:text-white">
+            <X size={20} />
+          </button>
         </div>
         
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <button 
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-emerald-500/10 text-emerald-400' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
           >
             <Activity size={18} />
             <span className="font-medium text-sm">Panel Sterowania</span>
           </button>
           <button 
-            onClick={() => setActiveTab('config')}
+            onClick={() => { setActiveTab('config'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'config' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
           >
             <Settings size={18} />
             <span className="font-medium text-sm">Konfigurator</span>
           </button>
           <button 
-            onClick={() => setActiveTab('code')}
+            onClick={() => { setActiveTab('code'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'code' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
           >
             <FileCode2 size={18} />
             <span className="font-medium text-sm">Kod Źródłowy</span>
           </button>
           <button 
-            onClick={() => setActiveTab('instructions')}
+            onClick={() => { setActiveTab('instructions'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'instructions' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
           >
             <BookOpen size={18} />
             <span className="font-medium text-sm">Instrukcja</span>
           </button>
           <button 
-            onClick={() => setActiveTab('names')}
+            onClick={() => { setActiveTab('names'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'names' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
           >
             <FileText size={18} />
@@ -831,7 +852,7 @@ CHECK_INTERVAL=${delay || '0.5'}
           
           <div className="pt-4">
             <button 
-              onClick={resetConfig}
+              onClick={() => { resetConfig(); setIsMobileMenuOpen(false); }}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400/60 hover:bg-red-500/10 hover:text-red-400 transition-all"
             >
               <RefreshCw size={18} />
@@ -850,8 +871,16 @@ CHECK_INTERVAL=${delay || '0.5'}
         </div>
       </div>
 
+      {/* Overlay for mobile */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Main Content */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative z-0">
         <div className="flex-1 overflow-y-auto p-6 md:p-10">
           <div className="max-w-5xl mx-auto">
             
