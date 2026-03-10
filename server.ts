@@ -70,7 +70,7 @@ async function startServer() {
       }
 
       // Spawn Python bot process
-      botProcess = spawn('python', ['main.py'], { env });
+      botProcess = spawn('python3', ['python_monitor/monitor.py'], { env });
       
       botProcess.stdout?.on('data', (data) => {
         botLogs.push(`[BOT] ${data.toString()}`);
