@@ -22,10 +22,12 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "node-telegram-bot-api": "^0.67.0",
+    "puppeteer": "^24.38.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
+    "telegram": "^2.26.22",
     "vite": "^6.2.0"
   },
   "devDependencies": {

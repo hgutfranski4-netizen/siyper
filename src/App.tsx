@@ -437,6 +437,107 @@ export default function App() {
   const [genCount, setGenCount] = useState(20);
   const [genCategory, setGenCategory] = useState('Technologia');
 
+  // Auth state
+  const [authStep, setAuthStep] = useState<'idle' | 'sending' | 'waiting' | 'signing' | 'password'>('idle');
+  const [authCode, setAuthCode] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isTesting, setIsTesting] = useState(false);
+
+  const handleSendCode = async () => {
+    if (!phone || !apiId || !apiHash) {
+      setAuthError('Wypełnij API ID, API Hash i Numer Telefonu!');
+      return;
+    }
+    setAuthStep('sending');
+    setAuthError('');
+    try {
+      const res = await fetch('/api/auth/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, apiId, apiHash })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAuthStep('waiting');
+      } else {
+        setAuthError(data.error || 'Błąd wysyłania kodu');
+        setAuthStep('idle');
+      }
+    } catch (e: any) {
+      setAuthError(e.message);
+      setAuthStep('idle');
+    }
+  };
+
+  const handleSignIn = async () => {
+    if (!authCode) {
+      setAuthError('Wpisz kod weryfikacyjny!');
+      return;
+    }
+    setAuthStep('signing');
+    setAuthError('');
+    try {
+      const res = await fetch('/api/auth/sign-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, code: authCode, password: authPassword, apiId, apiHash })
+      });
+      const data = await res.json();
+      if (data.requiresPassword) {
+        setAuthStep('password');
+        return;
+      }
+      if (data.stringSession) {
+        setStringSession(data.stringSession);
+        setAuthStep('idle');
+        setAuthCode('');
+        setAuthPassword('');
+        alert('Zalogowano pomyślnie! StringSession został zapisany.');
+      } else {
+        setAuthError(data.error || 'Błąd logowania');
+        setAuthStep('waiting');
+      }
+    } catch (e: any) {
+      setAuthError(e.message);
+      setAuthStep('waiting');
+    }
+  };
+
+  const testConnection = async () => {
+    if (!stringSession) {
+      alert('Najpierw wygeneruj lub wklej StringSession!');
+      return;
+    }
+    setIsTesting(true);
+    try {
+      const res = await fetch('/api/bot/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          mode: 'simulation', 
+          config: { apiId, apiHash, phone, stringSession, usernames: 'test', delay: '1' } 
+        })
+      });
+      const data = await res.json();
+      setTimeout(async () => {
+        const statusRes = await fetch('/api/status');
+        const status = await statusRes.json();
+        const lastLog = status.botLogs[status.botLogs.length - 1];
+        if (lastLog.includes('Zalogowano jako')) {
+          alert('Połączenie udane! ' + lastLog);
+        } else {
+          alert('Błąd połączenia: ' + lastLog);
+        }
+        await fetch('/api/bot/stop', { method: 'POST' });
+        setIsTesting(false);
+      }, 3000);
+    } catch (e: any) {
+      alert('Błąd testu: ' + e.message);
+      setIsTesting(false);
+    }
+  };
+
   const CATEGORIES = [
     "Technologia", "Zdrowie", "Edukacja", "Biznes", "Finanse", "Sport", "Rozrywka", 
     "Podróże", "Jedzenie", "Moda", "Motoryzacja", "Gry", "Nauka", "Sztuka", 
@@ -487,6 +588,30 @@ export default function App() {
 
   // Persistence Logic
   useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+        if (config.apiId) setApiId(config.apiId);
+        if (config.apiHash) setApiHash(config.apiHash);
+        if (config.phone) setPhone(config.phone);
+        if (config.telegramBotToken) setTelegramBotToken(config.telegramBotToken);
+        if (config.telegramChatId) setTelegramChatId(config.telegramChatId);
+        if (config.usernames) setUsernames(config.usernames);
+        if (config.delay) setDelay(config.delay);
+        if (config.stringSession) setStringSession(config.stringSession);
+        if (config.useProxy) setUseProxy(config.useProxy === 'true');
+        if (config.proxyType) setProxyType(config.proxyType);
+        if (config.proxyHost) setProxyHost(config.proxyHost);
+        if (config.proxyPort) setProxyPort(config.proxyPort);
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('apiId', apiId);
     localStorage.setItem('apiHash', apiHash);
     localStorage.setItem('phone', phone);
@@ -499,6 +624,25 @@ export default function App() {
     localStorage.setItem('proxyType', proxyType);
     localStorage.setItem('proxyHost', proxyHost);
     localStorage.setItem('proxyPort', proxyPort);
+
+    // Save to server with debounce
+    const timeout = setTimeout(async () => {
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            apiId, apiHash, phone, telegramBotToken, telegramChatId,
+            usernames, delay, stringSession, useProxy, proxyType,
+            proxyHost, proxyPort
+          })
+        });
+      } catch (error) {
+        console.error('Failed to save config:', error);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timeout);
   }, [apiId, apiHash, phone, telegramBotToken, telegramChatId, usernames, delay, stringSession, useProxy, proxyType, proxyHost, proxyPort]);
 
   // Bot Simulation State (now fetched from backend)
@@ -923,14 +1067,84 @@ CHECK_INTERVAL=${delay || '0.5'}
 
                     <div>
                       <label className="block text-xs font-medium text-gray-400 mb-1.5">String Session (Opcjonalne)</label>
-                      <input 
-                        type="text" 
-                        value={stringSession}
-                        onChange={(e) => setStringSession(e.target.value)}
-                        placeholder="np. 1BJWap1wBu..."
-                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono"
-                      />
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          value={stringSession}
+                          onChange={(e) => setStringSession(e.target.value)}
+                          placeholder="np. 1BJWap1wBu..."
+                          className="flex-1 bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono"
+                        />
+                        <button 
+                          onClick={testConnection}
+                          disabled={isTesting}
+                          className="px-3 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-medium transition-all text-gray-400 hover:text-white disabled:opacity-50"
+                        >
+                          {isTesting ? 'Testowanie...' : 'Testuj'}
+                        </button>
+                      </div>
                       <p className="text-[10px] text-gray-500 mt-1.5">Użyj StringSession, aby uniknąć logowania kodem SMS przy każdym restarcie na Railway.</p>
+                    </div>
+
+                    {/* Auth Helper */}
+                    <div className="pt-4 border-t border-white/5 space-y-3">
+                      <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Generator Sesji</h4>
+                      <p className="text-[10px] text-gray-500">Jeśli nie masz StringSession, możesz go wygenerować tutaj logując się do konta.</p>
+                      
+                      {authError && (
+                        <div className="p-2 bg-red-500/10 border border-red-500/20 rounded text-[10px] text-red-400">
+                          {authError}
+                        </div>
+                      )}
+
+                      {authStep === 'idle' && (
+                        <button 
+                          onClick={handleSendCode}
+                          className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-lg text-xs font-bold transition-all"
+                        >
+                          Wyślij kod weryfikacyjny
+                        </button>
+                      )}
+
+                      {(authStep === 'waiting' || authStep === 'signing' || authStep === 'password') && (
+                        <div className="space-y-2">
+                          <input 
+                            type="text" 
+                            value={authCode}
+                            onChange={(e) => setAuthCode(e.target.value)}
+                            placeholder="Wpisz kod z Telegrama"
+                            className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all font-mono"
+                          />
+                          {authStep === 'password' && (
+                            <input 
+                              type="password" 
+                              value={authPassword}
+                              onChange={(e) => setAuthPassword(e.target.value)}
+                              placeholder="Wpisz hasło 2FA"
+                              className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all font-mono"
+                            />
+                          )}
+                          <button 
+                            onClick={handleSignIn}
+                            disabled={authStep === 'signing'}
+                            className="w-full py-2 bg-emerald-500 text-black rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                          >
+                            {authStep === 'signing' ? 'Logowanie...' : 'Zaloguj i pobierz sesję'}
+                          </button>
+                          <button 
+                            onClick={() => setAuthStep('idle')}
+                            className="w-full py-1 text-[10px] text-gray-500 hover:text-gray-300 transition-all"
+                          >
+                            Anuluj
+                          </button>
+                        </div>
+                      )}
+
+                      {authStep === 'sending' && (
+                        <div className="text-center py-2 text-xs text-gray-500 animate-pulse">
+                          Wysyłanie kodu...
+                        </div>
+                      )}
                     </div>
                   </div>
 

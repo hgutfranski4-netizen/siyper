@@ -1,7 +1,7 @@
 import time
 import sqlite3
 import logging
-import telebot
+# import telebot
 import os
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
