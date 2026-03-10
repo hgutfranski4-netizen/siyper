@@ -1,0 +1,5 @@
+{
+  "name": "Telegram Sniper Bot Generator",
+  "description": "Generator kodu i konfiguracji dla bota do przechwytywania nazw użytkowników na Telegramie.",
+  "requestFramePermissions": []
+}
