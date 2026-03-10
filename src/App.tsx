@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Terminal, Settings, FileCode2, BookOpen, Copy, Check, Download, ShieldAlert, ChevronRight, FileText, Activity, Play, Square, RefreshCw, Zap, Clock, Shield } from 'lucide-react';
+import { GoogleGenAI, Type } from "@google/genai";
 
 const SNIPER_PY = `import asyncio
 import logging
@@ -122,186 +123,6 @@ class UsernameSniper:
         logger.info("Monitorowanie zatrzymane")
 `;
 
-const FRAGMENT_PY = `import time
-import logging
-import os
-import sqlite3
-import telebot
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from datetime import datetime
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-# Logger configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("FragmentMonitor")
-
-class FragmentMonitor:
-    def __init__(self):
-        self.bot_token = os.getenv('FRAGMENT_BOT_TOKEN', '')
-        self.chat_id = os.getenv('FRAGMENT_CHAT_ID', '')
-        self.check_interval = int(os.getenv('CHECK_INTERVAL_FRAGMENT', 300))
-        self.max_length = int(os.getenv('MAX_LENGTH', 4))
-        self.max_price = float(os.getenv('MAX_PRICE_TON', 50))
-        self.max_hours = int(os.getenv('MAX_HOURS_LEFT', 12))
-        
-        self.bot = telebot.TeleBot(self.bot_token) if self.bot_token else None
-        self.db_path = 'fragment_data.db'
-        self._init_db()
-        
-        # Chrome options for Docker
-        self.options = uc.ChromeOptions()
-        self.options.add_argument('--headless')
-        self.options.add_argument('--no-sandbox')
-        self.options.add_argument('--disable-dev-shm-usage')
-        self.options.add_argument('--window-size=1920,1080')
-        
-    def _init_db(self):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS seen_usernames (
-                username TEXT PRIMARY KEY,
-                last_price REAL,
-                found_at DATETIME
-            )
-        ''')
-        conn.commit()
-        conn.close()
-
-    def is_new(self, username, price):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('SELECT last_price FROM seen_usernames WHERE username = ?', (username,))
-        result = cursor.fetchone()
-        
-        if result is None:
-            cursor.execute('INSERT INTO seen_usernames VALUES (?, ?, ?)', 
-                          (username, price, datetime.now()))
-            conn.commit()
-            conn.close()
-            return True
-        
-        old_price = result[0]
-        if price < old_price * 0.9:
-            cursor.execute('UPDATE seen_usernames SET last_price = ? WHERE username = ?', (price, username))
-            conn.commit()
-            conn.close()
-            return True
-            
-        conn.close()
-        return False
-
-    def parse_time(self, time_str):
-        try:
-            hours = 0
-            if 'd' in time_str:
-                parts = time_str.split('d')
-                days = int(parts[0])
-                hours += days * 24
-                time_str = parts[1].strip()
-            if 'h' in time_str:
-                parts = time_str.split('h')
-                h = int(parts[0])
-                hours += h
-                time_str = parts[1].strip()
-            return hours
-        except:
-            return 999
-
-    def send_alert(self, username, price, time_left):
-        if not self.bot:
-            logger.info(f"ALERT: @{username} | {price} TON | {time_left}")
-            return
-
-        emoji = "🔥" if len(username) <= 4 else "✨"
-        if price < 50: emoji = "💎"
-        
-        text = (
-            f"{emoji} **FRAGMENT OPPORTUNITY** {emoji}\\n\\n"
-            f"👤 **Username:** @{username}\\n"
-            f"💰 **Price:** {price} TON\\n"
-            f"⏳ **Ends in:** {time_left}\\n\\n"
-            f"🔗 [View on Fragment](https://fragment.com/username/{username})"
-        )
-        
-        try:
-            self.bot.send_message(self.chat_id, text, parse_mode='Markdown')
-            logger.info(f"Alert sent for @{username}")
-        except Exception as e:
-            logger.error(f"Telegram error: {e}")
-
-    def scrape(self):
-        driver = None
-        try:
-            logger.info("Starting Fragment scrape...")
-            driver = uc.Chrome(options=self.options)
-            
-            sorts = ['listed', 'ending', 'price_asc']
-            for sort in sorts:
-                url = f"https://fragment.com/usernames?sort={sort}&filter=auction"
-                driver.get(url)
-                
-                WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.CLASS_NAME, "tm-table-grid-main"))
-                )
-                
-                rows = driver.find_elements(By.CLASS_NAME, "tm-row-selectable")
-                for row in rows:
-                    try:
-                        username = row.find_element(By.CLASS_NAME, "table-cell-value").text.strip().replace('@', '')
-                        price_text = row.find_element(By.CLASS_NAME, "icon-before").text.strip().replace(',', '')
-                        price = float(price_text)
-                        
-                        time_left = "N/A"
-                        try:
-                            time_left = row.find_element(By.CLASS_NAME, "tm-timer").text.strip()
-                        except:
-                            pass
-                        
-                        hours_left = self.parse_time(time_left)
-                        
-                        if (len(username) <= self.max_length or 
-                            price <= self.max_price or 
-                            hours_left <= self.max_hours):
-                            
-                            if self.is_new(username, price):
-                                self.send_alert(username, price, time_left)
-                                
-                    except:
-                        continue
-                
-                time.sleep(3)
-                
-        except Exception as e:
-            logger.error(f"Scrape failed: {e}")
-        finally:
-            if driver:
-                driver.quit()
-
-    def run(self):
-        logger.info("Fragment Monitor loop started.")
-        while True:
-            try:
-                self.scrape()
-            except Exception as e:
-                logger.error(f"Loop error: {e}")
-            
-            logger.info(f"Waiting {self.check_interval}s...")
-            time.sleep(self.check_interval)
-
-if __name__ == "__main__":
-    FragmentMonitor().run()
-`;
-
 const MAIN_PY = `import asyncio
 import logging
 import os
@@ -384,7 +205,7 @@ class UsernameSniper:
                     self.stats['sniped'] += 1
                     
                     # Send notification to self
-                    await self.client.send_message('me', f"✅ **SNIPER SUCCESS (CHANNEL)**\\nUsername: @{username}\\nTime: {datetime.now()}")
+                    await self.client.send_message('me', f"✅ **SNIPER SUCCESS (CHANNEL)**\nUsername: @{username}\nTime: {datetime.now()}")
                     
                     # Remove from targets if successful
                     self.target_usernames.remove(username)
@@ -477,42 +298,46 @@ if __name__ == "__main__":
 const REQUIREMENTS_TXT = `telethon>=1.34.0
 python-dotenv>=1.0.0
 aiohttp>=3.9.0
-cryptg>=0.4.0
-pysocks>=1.7.1
-undetected-chromedriver>=3.5.0
-pyTelegramBotAPI>=4.12.0
-selenium>=4.10.0
-webdriver-manager>=4.0.0
+cryptg>=0.4.0  # Przyspiesza szyfrowanie MTProto
+pysocks>=1.7.1  # Dla proxy SOCKS
 `;
 
 const DOCKERFILE = `FROM python:3.11-slim
 
-# Install system dependencies and Chrome for undetected-chromedriver
+# Install system dependencies
 RUN apt-get update && apt-get install -y \\
     build-essential \\
     libssl-dev \\
     libffi-dev \\
     python3-dev \\
-    wget \\
-    gnupg \\
-    unzip \\
     curl \\
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \\
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \\
-    && apt-get update && apt-get install -y google-chrome-stable \\
     && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \\
+    && apt-get install -y nodejs
 
 WORKDIR /app
 
+# Copy package files
+COPY package*.json ./
+RUN npm install
+
+# Copy requirements and install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy the rest of the application
 COPY . .
 
+# Build the frontend
+RUN npm run build
+
+# Create directory for sessions
 RUN mkdir -p sessions
 
-# Default to main.py, but can be overridden to fragment_monitor.py
-CMD ["python", "main.py"]`;
+# Command to run the Node.js server
+CMD ["npm", "start"]`;
 
 const RAILWAY_JSON = `{
   "$schema": "https://railway.app/railway.schema.json",
@@ -597,6 +422,8 @@ export default function App() {
   const [apiId, setApiId] = useState(() => localStorage.getItem('apiId') || '34215345');
   const [apiHash, setApiHash] = useState(() => localStorage.getItem('apiHash') || '1603428aaca7a813dea9a598c3276e61');
   const [phone, setPhone] = useState(() => localStorage.getItem('phone') || '+45 575911355');
+  const [telegramBotToken, setTelegramBotToken] = useState(() => localStorage.getItem('telegramBotToken') || '');
+  const [telegramChatId, setTelegramChatId] = useState(() => localStorage.getItem('telegramChatId') || '');
   const [usernames, setUsernames] = useState(() => localStorage.getItem('usernames') || '');
   const [delay, setDelay] = useState(() => localStorage.getItem('delay') || '0.5');
   const [stringSession, setStringSession] = useState(() => localStorage.getItem('stringSession') || '');
@@ -605,18 +432,16 @@ export default function App() {
   const [proxyHost, setProxyHost] = useState(() => localStorage.getItem('proxyHost') || '');
   const [proxyPort, setProxyPort] = useState(() => localStorage.getItem('proxyPort') || '');
 
-  // Fragment Monitor State
-  const [fragmentBotToken, setFragmentBotToken] = useState(() => localStorage.getItem('fragmentBotToken') || '');
-  const [fragmentChatId, setFragmentChatId] = useState(() => localStorage.getItem('fragmentChatId') || '');
-  const [maxLength, setMaxLength] = useState(() => localStorage.getItem('maxLength') || '4');
-  const [maxPrice, setMaxPrice] = useState(() => localStorage.getItem('maxPrice') || '50');
-  const [maxHours, setMaxHours] = useState(() => localStorage.getItem('maxHours') || '12');
-  const [fragmentInterval, setFragmentInterval] = useState(() => localStorage.getItem('fragmentInterval') || '300');
-
   // Name Generator State
   const [genLength, setGenLength] = useState(4);
   const [genCount, setGenCount] = useState(20);
-  const [genPattern, setGenPattern] = useState('random'); // random, cvcv, vcvc
+  const [genCategory, setGenCategory] = useState('Technologia');
+
+  const CATEGORIES = [
+    "Technologia", "Zdrowie", "Edukacja", "Biznes", "Finanse", "Sport", "Rozrywka", 
+    "Podróże", "Jedzenie", "Moda", "Motoryzacja", "Gry", "Nauka", "Sztuka", 
+    "Muzyka", "Film i telewizja", "Dom i ogród", "Styl życia", "Zwierzęta", "Ekologia"
+  ];
 
   const resetConfig = () => {
     if (window.confirm('Czy na pewno chcesz zresetować całą konfigurację?')) {
@@ -625,26 +450,39 @@ export default function App() {
     }
   };
 
-  const generateRandomNames = () => {
-    const vowels = 'aeiouy';
-    const consonants = 'bcdfghjklmnpqrstvwxz';
-    const all = vowels + consonants;
-    let results = [];
+  const [isGenerating, setIsGenerating] = useState(false);
 
-    for (let i = 0; i < genCount; i++) {
-      let name = '';
-      for (let j = 0; j < genLength; j++) {
-        if (genPattern === 'cvcv') {
-          name += j % 2 === 0 ? consonants[Math.floor(Math.random() * consonants.length)] : vowels[Math.floor(Math.random() * vowels.length)];
-        } else if (genPattern === 'vcvc') {
-          name += j % 2 === 0 ? vowels[Math.floor(Math.random() * vowels.length)] : consonants[Math.floor(Math.random() * consonants.length)];
-        } else {
-          name += all[Math.floor(Math.random() * all.length)];
-        }
-      }
-      results.push(name);
+  const generateRandomNames = async () => {
+    setIsGenerating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Generate ${genCount} unique, creative, and similar brand names for the category: ${genCategory}. Each name should be around ${genLength} characters long.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              names: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "List of generated brand names",
+              },
+            },
+            required: ["names"],
+          },
+        },
+      });
+      const data = JSON.parse(response.text!);
+      const results = data.names;
+      setUsernames(prev => prev ? `${prev}, ${results.join(', ')}` : results.join(', '));
+    } catch (error) {
+      console.error("Error generating names:", error);
+      alert("Wystąpił błąd podczas generowania nazw. Spróbuj ponownie.");
+    } finally {
+      setIsGenerating(false);
     }
-    setUsernames(prev => prev ? `${prev}, ${results.join(', ')}` : results.join(', '));
   };
 
   // Persistence Logic
@@ -652,6 +490,8 @@ export default function App() {
     localStorage.setItem('apiId', apiId);
     localStorage.setItem('apiHash', apiHash);
     localStorage.setItem('phone', phone);
+    localStorage.setItem('telegramBotToken', telegramBotToken);
+    localStorage.setItem('telegramChatId', telegramChatId);
     localStorage.setItem('usernames', usernames);
     localStorage.setItem('delay', delay);
     localStorage.setItem('stringSession', stringSession);
@@ -659,11 +499,12 @@ export default function App() {
     localStorage.setItem('proxyType', proxyType);
     localStorage.setItem('proxyHost', proxyHost);
     localStorage.setItem('proxyPort', proxyPort);
-  }, [apiId, apiHash, phone, usernames, delay, stringSession, useProxy, proxyType, proxyHost, proxyPort]);
+  }, [apiId, apiHash, phone, telegramBotToken, telegramChatId, usernames, delay, stringSession, useProxy, proxyType, proxyHost, proxyPort]);
 
-  // Bot Simulation State
+  // Bot Simulation State (now fetched from backend)
   const [isBotRunning, setIsBotRunning] = useState(false);
-  const [botLogs, setBotLogs] = useState<string[]>(['[SYSTEM] Bot gotowy do uruchomienia.']);
+  const [botMode, setBotMode] = useState<'capture' | 'simulation'>('capture');
+  const [botLogs, setBotLogs] = useState<string[]>(['[SYSTEM] Ładowanie...']);
   const [botStats, setBotStats] = useState({
     checks: 0,
     claims: 0,
@@ -671,54 +512,51 @@ export default function App() {
     lastCheck: 'Nigdy'
   });
 
-  // Bot Simulation Logic
+  // Fetch status from backend
   useEffect(() => {
-    let interval: any;
-    let uptimeInterval: any;
-
-    if (isBotRunning) {
-      setBotLogs(prev => [...prev.slice(-49), `[SYSTEM] Inicjalizacja sesji...`, `[SYSTEM] Połączono z Telegram API.`]);
-      
-      uptimeInterval = setInterval(() => {
-        setBotStats(prev => ({ ...prev, uptime: prev.uptime + 1 }));
-      }, 1000);
-
-      interval = setInterval(() => {
-        const targetList = usernames.split(',').map(u => u.trim()).filter(u => u.length > 0);
-        if (targetList.length === 0) {
-          setBotLogs(prev => [...prev.slice(-49), `[ERROR] Brak zdefiniowanych nazw do monitorowania!`]);
-          setIsBotRunning(false);
-          return;
-        }
-
-        const randomUser = targetList[Math.floor(Math.random() * targetList.length)];
-        const now = new Date().toLocaleTimeString();
-        
-        setBotStats(prev => ({ 
-          ...prev, 
-          checks: prev.checks + 1,
-          lastCheck: now
-        }));
-
-        setBotLogs(prev => [...prev.slice(-49), `[${now}] Sprawdzanie @${randomUser.replace('@', '')}... Niedostępny.`]);
-        
-        // 0.1% chance to "claim" a username in simulation
-        if (Math.random() < 0.001) {
-          setBotStats(prev => ({ ...prev, claims: prev.claims + 1 }));
-          setBotLogs(prev => [...prev.slice(-49), `[${now}] !!! SUKCES !!! Przejęto @${randomUser.replace('@', '')}!`]);
-        }
-      }, parseFloat(delay || '0.5') * 1000);
-    } else {
-      if (botLogs.length > 1) {
-        setBotLogs(prev => [...prev.slice(-49), `[SYSTEM] Bot zatrzymany.`]);
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        setIsBotRunning(data.isBotRunning);
+        setBotMode(data.botMode);
+        setBotLogs(data.botLogs);
+        setBotStats(data.botStats);
+      } catch (error) {
+        console.error('Failed to fetch status:', error);
       }
-    }
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(uptimeInterval);
     };
-  }, [isBotRunning, usernames, delay]);
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const toggleBot = async (action: 'start' | 'stop') => {
+    try {
+      const config = {
+        apiId,
+        apiHash,
+        phone,
+        telegramBotToken,
+        telegramChatId,
+        usernames,
+        delay,
+        stringSession,
+        useProxy,
+        proxyType,
+        proxyHost,
+        proxyPort
+      };
+      await fetch(`/api/bot/${action}`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: botMode, config })
+      });
+      // Status will be updated by the useEffect interval
+    } catch (error) {
+      console.error('Failed to toggle bot:', error);
+    }
+  };
 
   const generateEnvContent = () => {
     const usernameList = usernames
@@ -730,18 +568,12 @@ export default function App() {
     let env = `API_ID=${apiId || '0'}
 API_HASH=${apiHash || ''}
 PHONE=${phone || ''}
+TELEGRAM_BOT_TOKEN=${telegramBotToken || ''}
+TELEGRAM_CHAT_ID=${telegramChatId || ''}
 STRING_SESSION=${stringSession || ''}
 SESSION_FILE=accounts/main
 TARGET_USERNAMES=${usernameList}
 CHECK_INTERVAL=${delay || '0.5'}
-
-# Fragment Monitor Settings
-FRAGMENT_BOT_TOKEN=${fragmentBotToken || ''}
-FRAGMENT_CHAT_ID=${fragmentChatId || ''}
-MAX_LENGTH=${maxLength || '4'}
-MAX_PRICE_TON=${maxPrice || '50'}
-MAX_HOURS_LEFT=${maxHours || '12'}
-CHECK_INTERVAL_FRAGMENT=${fragmentInterval || '300'}
 `;
 
     if (useProxy && proxyHost && proxyPort) {
@@ -754,7 +586,6 @@ CHECK_INTERVAL_FRAGMENT=${fragmentInterval || '300'}
   const getActiveFileContent = () => {
     switch (activeFile) {
       case 'main.py': return MAIN_PY;
-      case 'fragment_monitor.py': return FRAGMENT_PY;
       case 'Dockerfile': return DOCKERFILE;
       case 'requirements.txt': return REQUIREMENTS_TXT;
       case 'railway.json': return RAILWAY_JSON;
@@ -865,12 +696,26 @@ CHECK_INTERVAL_FRAGMENT=${fragmentInterval || '300'}
                     <p className="text-gray-400 text-sm">Monitoruj pracę bota w czasie rzeczywistym i zarządzaj jego stanem.</p>
                   </div>
                   <div className="flex items-center gap-3">
+                    <div className="flex items-center bg-black/50 border border-white/10 rounded-xl p-1">
+                      <button 
+                        onClick={() => setBotMode('capture')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${botMode === 'capture' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        Przechwytywanie
+                      </button>
+                      <button 
+                        onClick={() => setBotMode('simulation')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${botMode === 'simulation' ? 'bg-amber-500/20 text-amber-400' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        Symulacja
+                      </button>
+                    </div>
                     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${isBotRunning ? 'bg-emerald-500/10 text-emerald-500 animate-pulse' : 'bg-red-500/10 text-red-500'}`}>
                       <div className={`w-2 h-2 rounded-full ${isBotRunning ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
                       {isBotRunning ? 'BOT DZIAŁA' : 'BOT WYŁĄCZONY'}
                     </div>
                     <button 
-                      onClick={() => setIsBotRunning(!isBotRunning)}
+                      onClick={() => toggleBot(isBotRunning ? 'stop' : 'start')}
                       className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg ${isBotRunning ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20' : 'bg-emerald-500 hover:bg-emerald-600 text-black shadow-emerald-500/20'}`}
                     >
                       {isBotRunning ? <Square size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
@@ -1055,6 +900,28 @@ CHECK_INTERVAL_FRAGMENT=${fragmentInterval || '300'}
                     </div>
 
                     <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5">Telegram Bot Token</label>
+                      <input 
+                        type="text" 
+                        value={telegramBotToken}
+                        onChange={(e) => setTelegramBotToken(e.target.value)}
+                        placeholder="np. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5">Telegram Chat ID</label>
+                      <input 
+                        type="text" 
+                        value={telegramChatId}
+                        onChange={(e) => setTelegramChatId(e.target.value)}
+                        placeholder="np. 123456789"
+                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono"
+                      />
+                    </div>
+
+                    <div>
                       <label className="block text-xs font-medium text-gray-400 mb-1.5">String Session (Opcjonalne)</label>
                       <input 
                         type="text" 
@@ -1067,100 +934,31 @@ CHECK_INTERVAL_FRAGMENT=${fragmentInterval || '300'}
                     </div>
                   </div>
 
-                  <div className="space-y-6">
-                    <div className="space-y-4 bg-[#151515] p-6 rounded-2xl border border-white/5">
-                      <h3 className="text-sm font-medium text-gray-300 uppercase tracking-wider mb-4">Ustawienia Snajpera</h3>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Usernames (po przecinku)</label>
-                        <textarea 
-                          value={usernames}
-                          onChange={(e) => setUsernames(e.target.value)}
-                          placeholder="np. crypto, bitcoin, nft"
-                          rows={3}
-                          className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono resize-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Interwał sprawdzania (sekundy)</label>
-                        <input 
-                          type="number" 
-                          step="0.1"
-                          min="0.1"
-                          value={delay}
-                          onChange={(e) => setDelay(e.target.value)}
-                          className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono"
-                        />
-                        <p className="text-[10px] text-gray-500 mt-1.5">Zalecane: 0.5 - 1.0s. Zbyt niska wartość spowoduje FloodWait.</p>
-                      </div>
+                  <div className="space-y-4 bg-[#151515] p-6 rounded-2xl border border-white/5">
+                    <h3 className="text-sm font-medium text-gray-300 uppercase tracking-wider mb-4">Ustawienia Snajpera</h3>
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5">Usernames (po przecinku)</label>
+                      <textarea 
+                        value={usernames}
+                        onChange={(e) => setUsernames(e.target.value)}
+                        placeholder="np. crypto, bitcoin, nft"
+                        rows={3}
+                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono resize-none"
+                      />
                     </div>
 
-                    <div className="space-y-4 bg-[#151515] p-6 rounded-2xl border border-white/5">
-                      <h3 className="text-sm font-medium text-emerald-500 uppercase tracking-wider mb-4">Fragment.com Monitor</h3>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1.5">Bot Token (Telegram)</label>
-                          <input 
-                            type="password" 
-                            value={fragmentBotToken}
-                            onChange={(e) => setFragmentBotToken(e.target.value)}
-                            placeholder="BotFather Token"
-                            className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all font-mono"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1.5">Chat ID / Kanał ID</label>
-                          <input 
-                            type="text" 
-                            value={fragmentChatId}
-                            onChange={(e) => setFragmentChatId(e.target.value)}
-                            placeholder="np. -100123456789"
-                            className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all font-mono"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4 pt-2">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1.5">Max Długość</label>
-                          <input 
-                            type="number" 
-                            value={maxLength}
-                            onChange={(e) => setMaxLength(e.target.value)}
-                            className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1.5">Max Cena (TON)</label>
-                          <input 
-                            type="number" 
-                            value={maxPrice}
-                            onChange={(e) => setMaxPrice(e.target.value)}
-                            className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1.5">Koniec za (h)</label>
-                          <input 
-                            type="number" 
-                            value={maxHours}
-                            onChange={(e) => setMaxHours(e.target.value)}
-                            className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Interwał sprawdzania Fragment (sekundy)</label>
-                        <input 
-                          type="number" 
-                          value={fragmentInterval}
-                          onChange={(e) => setFragmentInterval(e.target.value)}
-                          className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all font-mono"
-                        />
-                      </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5">Interwał sprawdzania (sekundy)</label>
+                      <input 
+                        type="number" 
+                        step="0.1"
+                        min="0.1"
+                        value={delay}
+                        onChange={(e) => setDelay(e.target.value)}
+                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all font-mono"
+                      />
+                      <p className="text-[10px] text-gray-500 mt-1.5">Zalecane: 0.5 - 1.0s. Zbyt niska wartość spowoduje FloodWait.</p>
                     </div>
                   </div>
                 </div>
@@ -1254,7 +1052,7 @@ CHECK_INTERVAL_FRAGMENT=${fragmentInterval || '300'}
                   <div className="md:col-span-1 bg-[#151515] border border-white/10 rounded-xl p-3 flex flex-col gap-1">
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">Pliki projektu</div>
                     
-                    {['main.py', 'fragment_monitor.py', 'Dockerfile', 'requirements.txt', 'railway.json', '.env.example', 'README.md', '.env'].map(file => (
+                    {['main.py', 'Dockerfile', 'requirements.txt', 'railway.json', '.env.example', 'README.md', '.env'].map(file => (
                       <button
                         key={file}
                         onClick={() => setActiveFile(file)}
@@ -1315,7 +1113,8 @@ CHECK_INTERVAL_FRAGMENT=${fragmentInterval || '300'}
                     <div className="bg-black/50 p-4 rounded-lg border border-white/5 font-mono text-sm text-gray-400">
                       my_sniper_bot/<br/>
                       ├── main.py<br/>
-                      ├── fragment_monitor.py<br/>
+                      ├── sniper.py<br/>
+                      ├── logger.py<br/>
                       ├── requirements.txt<br/>
                       └── .env
                     </div>
@@ -1455,14 +1254,25 @@ CHECK_INTERVAL_FRAGMENT=${fragmentInterval || '300'}
 
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Długość nazwy</label>
+                      <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Kategoria</label>
                       <select 
+                        value={genCategory}
+                        onChange={(e) => setGenCategory(e.target.value)}
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all"
+                      >
+                        {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Długość nazwy</label>
+                      <input 
+                        type="number"
+                        min="1"
+                        max="10"
                         value={genLength}
                         onChange={(e) => setGenLength(parseInt(e.target.value))}
                         className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all"
-                      >
-                        {[3, 4, 5, 6].map(n => <option key={n} value={n}>{n} litery</option>)}
-                      </select>
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Ilość nazw</label>
@@ -1474,23 +1284,12 @@ CHECK_INTERVAL_FRAGMENT=${fragmentInterval || '300'}
                         {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} sztuk</option>)}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Wzór (Pattern)</label>
-                      <select 
-                        value={genPattern}
-                        onChange={(e) => setGenPattern(e.target.value)}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all"
-                      >
-                        <option value="random">Całkowicie losowe</option>
-                        <option value="cvcv">Spółgłoska-Samogłoska (CVCV)</option>
-                        <option value="vcvc">Samogłoska-Spółgłoska (VCVC)</option>
-                      </select>
-                    </div>
                     <button 
                       onClick={generateRandomNames}
-                      className="bg-emerald-500 hover:bg-emerald-600 text-black font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+                      disabled={isGenerating}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-black font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Generuj i dodaj
+                      {isGenerating ? 'Generowanie...' : 'Generuj i dodaj'}
                     </button>
                   </div>
                   <p className="text-[10px] text-gray-500 mt-4 italic">

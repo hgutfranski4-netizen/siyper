@@ -1,0 +1,6 @@
+telethon
+pyTelegramBotAPI
+undetected-chromedriver
+selenium
+sqlite3
+requests
