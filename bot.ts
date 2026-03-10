@@ -36,17 +36,32 @@ export class SniperBot {
     const apiHash = this.config.apiHash;
     const stringSession = new StringSession(this.config.stringSession || "");
 
-    this.log(`[SYSTEM] Łączenie z serwerami Telegram...`);
+    this.log(`[SYSTEM] Łączenie z serwerami Telegram (Timeout: 60s)...`);
     try {
-      this.client = new TelegramClient(stringSession, apiId, apiHash, {
-        connectionRetries: 10,
-        requestRetries: 5,
-        timeout: 30000,
+      const clientOptions: any = {
+        connectionRetries: 15,
+        requestRetries: 10,
+        timeout: 60000,
         useIPV6: false,
-      });
+        deviceModel: "SniperBot Server",
+        systemVersion: "1.0.0",
+        appVersion: "1.0.0",
+      };
+
+      if (this.config.useProxy && this.config.proxyHost && this.config.proxyPort) {
+        this.log(`[SYSTEM] Używanie proxy: ${this.config.proxyHost}:${this.config.proxyPort} (${this.config.proxyType})`);
+        clientOptions.proxy = {
+          ip: this.config.proxyHost,
+          port: parseInt(this.config.proxyPort),
+          socksType: this.config.proxyType === 'socks5' ? 5 : 4,
+          timeout: 15,
+        };
+      }
+
+      this.client = new TelegramClient(stringSession, apiId, apiHash, clientOptions);
 
       await this.client.connect();
-      this.log(`[SYSTEM] Połączono pomyślnie.`);
+      this.log(`[SYSTEM] Połączono z Telegramem.`);
 
       const authorized = await this.client.isUserAuthorized();
       if (!authorized) {
@@ -142,7 +157,11 @@ export class SniperBot {
           
           await new Promise(r => setTimeout(r, 100)); // Small delay between targets
         } catch (error: any) {
-          this.log(`[ERROR] Błąd podczas sprawdzania @${username}: ${error.message}`);
+          if (error.message.includes('TIMEOUT')) {
+            this.log(`[ERROR] Przekroczono czas połączenia (TIMEOUT) dla @${username}. Telegram nie odpowiada.`);
+          } else {
+            this.log(`[ERROR] Błąd podczas sprawdzania @${username}: ${error.message}`);
+          }
         }
       }
       

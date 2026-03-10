@@ -1,6 +1,5 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import axios from "axios";
 import TelegramBot from "node-telegram-bot-api";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
@@ -161,12 +160,26 @@ async function startServer() {
   app.post("/api/auth/send-code", express.json(), async (req, res) => {
     const { phone, apiId, apiHash } = req.body;
     try {
-      const client = new TelegramClient(new StringSession(""), parseInt(apiId), apiHash, { 
-        connectionRetries: 10,
-        requestRetries: 5,
-        timeout: 30000,
+      const rows = await db.all('SELECT key, value FROM bot_config');
+      const config = rows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
+      
+      const clientOptions: any = { 
+        connectionRetries: 15,
+        requestRetries: 10,
+        timeout: 60000,
         useIPV6: false,
-      });
+      };
+
+      if (config.useProxy === 'true' && config.proxyHost && config.proxyPort) {
+        clientOptions.proxy = {
+          ip: config.proxyHost,
+          port: parseInt(config.proxyPort),
+          socksType: config.proxyType === 'socks5' ? 5 : 4,
+          timeout: 15,
+        };
+      }
+
+      const client = new TelegramClient(new StringSession(""), parseInt(apiId), apiHash, clientOptions);
       await client.connect();
       const result: any = await client.invoke(new Api.auth.SendCode({
         phoneNumber: phone,
@@ -219,10 +232,44 @@ async function startServer() {
         }
       }
       const stringSession = client.session.save() as unknown as string;
+      await client.disconnect();
       authSessions.delete(phone);
       res.json({ stringSession });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // API Route: Test Connection
+  app.post("/api/auth/test", express.json(), async (req, res) => {
+    const { apiId, apiHash, stringSession } = req.body;
+    try {
+      const rows = await db.all('SELECT key, value FROM bot_config');
+      const config = rows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
+
+      const clientOptions: any = { 
+        connectionRetries: 5,
+        requestRetries: 3,
+        timeout: 20000,
+        useIPV6: false,
+      };
+
+      if (config.useProxy === 'true' && config.proxyHost && config.proxyPort) {
+        clientOptions.proxy = {
+          ip: config.proxyHost,
+          port: parseInt(config.proxyPort),
+          socksType: config.proxyType === 'socks5' ? 5 : 4,
+          timeout: 15,
+        };
+      }
+
+      const client = new TelegramClient(new StringSession(stringSession), parseInt(apiId), apiHash, clientOptions);
+      await client.connect();
+      const me = await client.getMe();
+      await client.disconnect();
+      res.json({ success: true, user: me.firstName });
+    } catch (error: any) {
+      res.json({ success: false, error: error.message });
     }
   });
 
