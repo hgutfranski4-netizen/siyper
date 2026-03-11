@@ -15,9 +15,9 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
-  console.log("[SYSTEM] Starting server initialization...");
+  console.log(`[SYSTEM] Starting server on port ${PORT}...`);
 
   // Health check route - MUST be first
   app.get("/api/health", (req, res) => {
@@ -155,18 +155,20 @@ async function startServer() {
   // API Route: Send Auth Code
   app.post("/api/auth/send-code", express.json(), async (req, res) => {
     const { phone, apiId, apiHash } = req.body;
+    console.log(`[AUTH] Attempting to send code to ${phone} with API_ID ${apiId}`);
     try {
       const rows = await db.all('SELECT key, value FROM bot_config');
       const config = rows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {});
       
       const clientOptions: any = { 
-        connectionRetries: 15,
+        connectionRetries: 20,
         requestRetries: 10,
-        timeout: 60000,
+        timeout: 90000,
         useIPV6: false,
       };
 
       if ((config.useProxy === 'true' || config.useProxy === true) && config.proxyHost && config.proxyPort) {
+        console.log(`[AUTH] Using proxy for auth: ${config.proxyHost}`);
         clientOptions.proxy = {
           ip: config.proxyHost,
           port: parseInt(config.proxyPort),
@@ -177,20 +179,25 @@ async function startServer() {
 
       const client = new TelegramClient(new StringSession(""), parseInt(apiId), apiHash, clientOptions);
       await client.connect();
+      console.log(`[AUTH] Connected to Telegram, invoking SendCode...`);
+      
       const result: any = await client.invoke(new Api.auth.SendCode({
         phoneNumber: phone,
         apiId: parseInt(apiId),
         apiHash: apiHash,
         settings: new Api.CodeSettings({
-          allowFlashcall: true,
+          allowFlashcall: false,
           currentNumber: true,
           allowAppHash: true,
         }),
       }));
+      
+      console.log(`[AUTH] SendCode invoked successfully. Hash: ${result.phoneCodeHash}`);
       const phoneCodeHash = result.phoneCodeHash;
       authSessions.set(phone, { client, phoneCodeHash });
       res.json({ success: true });
     } catch (error: any) {
+      console.error(`[AUTH ERROR] Failed to send code:`, error);
       res.status(500).json({ error: error.message });
     }
   });

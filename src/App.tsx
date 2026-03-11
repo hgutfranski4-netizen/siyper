@@ -451,11 +451,12 @@ export default function App() {
     }
     setAuthStep('sending');
     setAuthError('');
+    const sanitizedPhone = phone.replace(/\s/g, '');
     try {
       const res = await fetch('/api/auth/send-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, apiId, apiHash })
+        body: JSON.stringify({ phone: sanitizedPhone, apiId, apiHash })
       });
       const data = await res.json();
       if (data.success) {
@@ -481,11 +482,12 @@ export default function App() {
     }
     setAuthStep('signing');
     setAuthError('');
+    const sanitizedPhone = phone.replace(/\s/g, '');
     try {
       const res = await fetch('/api/auth/sign-in', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, code: authCode, password: authPassword, apiId, apiHash })
+        body: JSON.stringify({ phone: sanitizedPhone, code: authCode, password: authPassword, apiId, apiHash })
       });
       const data = await res.json();
       if (data.requiresPassword) {
