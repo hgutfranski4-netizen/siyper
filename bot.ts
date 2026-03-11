@@ -23,8 +23,13 @@ export class SniperBot {
   private stats = { checks: 0, claims: 0, uptime: 0, lastCheck: 'Nigdy' };
   private logs: string[] = [];
   private startTime: number = 0;
+  private config: BotConfig;
+  private onLog: (log: string) => void;
 
-  constructor(private config: BotConfig, private onLog: (log: string) => void) {}
+  constructor(config: BotConfig, onLog: (log: string) => void) {
+    this.config = config;
+    this.onLog = onLog;
+  }
 
   async start() {
     if (this.running) return;
