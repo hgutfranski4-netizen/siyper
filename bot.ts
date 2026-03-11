@@ -11,7 +11,7 @@ interface BotConfig {
   usernames: string;
   delay: string;
   stringSession: string;
-  useProxy: boolean;
+  useProxy: boolean | string;
   proxyType: string;
   proxyHost: string;
   proxyPort: string;
@@ -39,16 +39,16 @@ export class SniperBot {
     this.log(`[SYSTEM] Łączenie z serwerami Telegram (Timeout: 60s)...`);
     try {
       const clientOptions: any = {
-        connectionRetries: 15,
-        requestRetries: 10,
-        timeout: 60000,
+        connectionRetries: 30,
+        requestRetries: 15,
+        timeout: 90000,
         useIPV6: false,
         deviceModel: "SniperBot Server",
         systemVersion: "1.0.0",
         appVersion: "1.0.0",
       };
 
-      if (this.config.useProxy && this.config.proxyHost && this.config.proxyPort) {
+      if ((this.config.useProxy === true || this.config.useProxy === 'true') && this.config.proxyHost && this.config.proxyPort) {
         this.log(`[SYSTEM] Używanie proxy: ${this.config.proxyHost}:${this.config.proxyPort} (${this.config.proxyType})`);
         clientOptions.proxy = {
           ip: this.config.proxyHost,
@@ -78,23 +78,40 @@ export class SniperBot {
         .map(u => u.trim().replace('@', ''))
         .filter(u => u.length > 0);
 
+      if (targetUsernames.length === 0) {
+        this.log(`[ERROR] Brak nazw do monitorowania.`);
+        this.stop();
+        return;
+      }
+
       this.log(`[SYSTEM] Rozpoczęto monitorowanie: ${targetUsernames.join(', ')}`);
 
-      this.monitorLoop(targetUsernames);
+      this.monitorLoop(targetUsernames).catch(err => {
+        this.log(`[CRITICAL] Pętla monitorująca napotkała błąd krytyczny: ${err?.message || err}`);
+        this.stop();
+      });
     } catch (error: any) {
-      this.log(`[ERROR] Błąd startu: ${error.message}`);
+      this.log(`[ERROR] Błąd startu: ${error?.message || error}`);
       this.stop();
     }
   }
 
   private async monitorLoop(usernames: string[]) {
-    const delay = parseFloat(this.config.delay) * 1000;
+    let delay = parseFloat(this.config.delay) * 1000;
+    if (isNaN(delay) || delay < 100) {
+      delay = 1000; // Default to 1 second if invalid or too low
+    }
     
     while (this.running && this.client) {
       for (const username of usernames) {
         if (!this.running) break;
         
         try {
+          if (!this.client || !this.client.connected) {
+            this.log(`[SYSTEM] Reconnecting to Telegram...`);
+            await this.client?.connect();
+          }
+
           this.stats.checks++;
           this.stats.lastCheck = new Date().toLocaleTimeString();
           
@@ -149,18 +166,21 @@ export class SniperBot {
                 if (claimError.errorMessage === 'CHANNELS_ADMIN_PUBLIC_TOO_MUCH') {
                   this.log(`[ERROR] Limit kanałów publicznych osiągnięty! Usuń niepotrzebne kanały publiczne.`);
                 } else {
-                  this.log(`[ERROR] Nie udało się przejąć @${username}: ${claimError.message}`);
+                  this.log(`[ERROR] Nie udało się przejąć @${username}: ${claimError?.message || claimError}`);
                 }
               }
+            } else {
+              throw error; // Propagate other errors to outer catch
             }
           }
           
           await new Promise(r => setTimeout(r, 100)); // Small delay between targets
         } catch (error: any) {
-          if (error.message.includes('TIMEOUT')) {
+          if (error?.message?.includes('TIMEOUT')) {
             this.log(`[ERROR] Przekroczono czas połączenia (TIMEOUT) dla @${username}. Telegram nie odpowiada.`);
+            await new Promise(r => setTimeout(r, 5000)); // Wait 5s before next attempt
           } else {
-            this.log(`[ERROR] Błąd podczas sprawdzania @${username}: ${error.message}`);
+            this.log(`[ERROR] Błąd podczas sprawdzania @${username}: ${error?.message || error}`);
           }
         }
       }

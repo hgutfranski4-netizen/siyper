@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, Settings, FileCode2, BookOpen, Copy, Check, Download, ShieldAlert, ChevronRight, FileText, Activity, Play, Square, RefreshCw, Zap, Clock, Shield, Menu, X } from 'lucide-react';
+import { Terminal, Settings, FileCode2, BookOpen, Copy, Check, Download, ShieldAlert, ChevronRight, FileText, Activity, Play, Square, RefreshCw, Zap, Clock, Shield, Menu, X, Sparkles, Wand2, SlidersHorizontal } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
 const SNIPER_PY = `import asyncio
@@ -583,12 +583,22 @@ export default function App() {
           },
         },
       });
-      const data = JSON.parse(response.text!);
+      
+      let jsonStr = response.text || '';
+      if (jsonStr.startsWith('```json')) {
+        jsonStr = jsonStr.replace(/^```json/, '').replace(/```$/, '').trim();
+      } else if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replace(/^```/, '').replace(/```$/, '').trim();
+      }
+      
+      const data = JSON.parse(jsonStr);
       const results = data.names;
-      setUsernames(prev => prev ? `${prev}, ${results.join(', ')}` : results.join(', '));
-    } catch (error) {
+      if (results && Array.isArray(results)) {
+        setUsernames(prev => prev ? `${prev}, ${results.join(', ')}` : results.join(', '));
+      }
+    } catch (error: any) {
       console.error("Error generating names:", error);
-      alert("Wystąpił błąd podczas generowania nazw. Spróbuj ponownie.");
+      alert("Wystąpił błąd podczas generowania nazw. Spróbuj ponownie. " + (error?.message || ''));
     } finally {
       setIsGenerating(false);
     }
@@ -892,32 +902,34 @@ CHECK_INTERVAL=${delay || '0.5'}
                     <h2 className="text-2xl font-semibold text-white mb-2">Panel Sterowania Botem</h2>
                     <p className="text-gray-400 text-sm">Monitoruj pracę bota w czasie rzeczywistym i zarządzaj jego stanem.</p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center bg-black/50 border border-white/10 rounded-xl p-1">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <div className="flex items-center justify-center bg-black/50 border border-white/10 rounded-xl p-1">
                       <button 
                         onClick={() => setBotMode('capture')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${botMode === 'capture' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}
+                        className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${botMode === 'capture' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}
                       >
                         Przechwytywanie
                       </button>
                       <button 
                         onClick={() => setBotMode('simulation')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${botMode === 'simulation' ? 'bg-amber-500/20 text-amber-400' : 'text-gray-500 hover:text-gray-300'}`}
+                        className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${botMode === 'simulation' ? 'bg-amber-500/20 text-amber-400' : 'text-gray-500 hover:text-gray-300'}`}
                       >
                         Symulacja
                       </button>
                     </div>
-                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${isBotRunning ? 'bg-emerald-500/10 text-emerald-500 animate-pulse' : 'bg-red-500/10 text-red-500'}`}>
-                      <div className={`w-2 h-2 rounded-full ${isBotRunning ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                      {isBotRunning ? 'BOT DZIAŁA' : 'BOT WYŁĄCZONY'}
+                    <div className="flex items-center justify-between sm:justify-start gap-3">
+                      <div className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold flex-1 sm:flex-none ${isBotRunning ? 'bg-emerald-500/10 text-emerald-500 animate-pulse' : 'bg-red-500/10 text-red-500'}`}>
+                        <div className={`w-2 h-2 rounded-full ${isBotRunning ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                        {isBotRunning ? 'BOT DZIAŁA' : 'BOT WYŁĄCZONY'}
+                      </div>
+                      <button 
+                        onClick={() => toggleBot(isBotRunning ? 'stop' : 'start')}
+                        className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg flex-1 sm:flex-none ${isBotRunning ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20' : 'bg-emerald-500 hover:bg-emerald-600 text-black shadow-emerald-500/20'}`}
+                      >
+                        {isBotRunning ? <Square size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                        {isBotRunning ? 'Zatrzymaj Bota' : 'Uruchom Bota'}
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => toggleBot(isBotRunning ? 'stop' : 'start')}
-                      className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg ${isBotRunning ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20' : 'bg-emerald-500 hover:bg-emerald-600 text-black shadow-emerald-500/20'}`}
-                    >
-                      {isBotRunning ? <Square size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-                      {isBotRunning ? 'Zatrzymaj Bota' : 'Uruchom Bota'}
-                    </button>
                   </div>
                 </div>
 
@@ -1131,7 +1143,7 @@ CHECK_INTERVAL=${delay || '0.5'}
 
                     <div>
                       <label className="block text-xs font-medium text-gray-400 mb-1.5">String Session (Opcjonalne)</label>
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <input 
                           type="text" 
                           value={stringSession}
@@ -1142,7 +1154,7 @@ CHECK_INTERVAL=${delay || '0.5'}
                         <button 
                           onClick={testConnection}
                           disabled={isTesting}
-                          className="px-3 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-medium transition-all text-gray-400 hover:text-white disabled:opacity-50"
+                          className="px-3 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-medium transition-all text-gray-400 hover:text-white disabled:opacity-50 w-full sm:w-auto"
                         >
                           {isTesting ? 'Testowanie...' : 'Testuj'}
                         </button>
@@ -1188,19 +1200,21 @@ CHECK_INTERVAL=${delay || '0.5'}
                               className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all font-mono"
                             />
                           )}
-                          <button 
-                            onClick={handleSignIn}
-                            disabled={authStep === 'signing'}
-                            className="w-full py-2 bg-emerald-500 text-black rounded-lg text-xs font-bold transition-all disabled:opacity-50"
-                          >
-                            {authStep === 'signing' ? 'Logowanie...' : 'Zaloguj i pobierz sesję'}
-                          </button>
-                          <button 
-                            onClick={() => setAuthStep('idle')}
-                            className="w-full py-1 text-[10px] text-gray-500 hover:text-gray-300 transition-all"
-                          >
-                            Anuluj
-                          </button>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <button 
+                              onClick={handleSignIn}
+                              disabled={authStep === 'signing'}
+                              className="w-full py-2 bg-emerald-500 text-black rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                            >
+                              {authStep === 'signing' ? 'Logowanie...' : 'Zaloguj i pobierz sesję'}
+                            </button>
+                            <button 
+                              onClick={() => setAuthStep('idle')}
+                              className="w-full sm:w-auto py-2 px-4 bg-white/5 hover:bg-white/10 rounded-lg text-xs text-gray-400 hover:text-white transition-all"
+                            >
+                              Anuluj
+                            </button>
+                          </div>
                         </div>
                       )}
 
@@ -1278,19 +1292,19 @@ CHECK_INTERVAL=${delay || '0.5'}
 
                 {/* Generated ENV Preview */}
                 <div className="mt-8">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                     <h3 className="text-sm font-medium text-gray-300">Wygenerowany plik .env</h3>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
                       <button 
                         onClick={() => copyToClipboard(generateEnvContent())}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-md text-xs font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-md text-xs font-medium transition-colors w-full sm:w-auto"
                       >
                         {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                         {copied ? 'Skopiowano' : 'Kopiuj'}
                       </button>
                       <button 
                         onClick={() => downloadFile('.env', generateEnvContent())}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 rounded-md text-xs font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 rounded-md text-xs font-medium transition-colors w-full sm:w-auto"
                       >
                         <Download size={14} />
                         Pobierz .env
@@ -1314,10 +1328,10 @@ CHECK_INTERVAL=${delay || '0.5'}
                     <h2 className="text-2xl font-semibold text-white mb-2">Kod Źródłowy Bota</h2>
                     <p className="text-gray-400 text-sm">Bot został podzielony na moduły. Pobierz wszystkie pliki i umieść w jednym folderze.</p>
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex flex-col sm:flex-row gap-2 shrink-0">
                     <button 
                       onClick={() => downloadFile(activeFile, getActiveFileContent())}
-                      className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg text-sm font-semibold transition-colors shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg text-sm font-semibold transition-colors shadow-[0_0_15px_rgba(16,185,129,0.3)] w-full sm:w-auto"
                     >
                       <Download size={16} />
                       Pobierz {activeFile}
@@ -1344,21 +1358,22 @@ CHECK_INTERVAL=${delay || '0.5'}
 
                   {/* Code Editor */}
                   <div className="md:col-span-3 bg-[#151515] border border-white/10 rounded-xl overflow-hidden flex flex-col">
-                    <div className="bg-[#111] px-4 py-2 border-b border-white/10 flex items-center justify-between">
+                    <div className="bg-[#111] px-4 py-2 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <div className="flex gap-1.5">
                           <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
                           <div className="w-3 h-3 rounded-full bg-amber-500/80"></div>
                           <div className="w-3 h-3 rounded-full bg-emerald-500/80"></div>
                         </div>
-                        <span className="text-xs text-gray-400 font-mono ml-2">{activeFile}</span>
+                        <span className="text-xs text-gray-400 font-mono ml-2 truncate">{activeFile}</span>
                       </div>
                       <button 
                         onClick={() => copyToClipboard(getActiveFileContent())}
-                        className="text-gray-500 hover:text-white transition-colors"
+                        className="text-gray-500 hover:text-white transition-colors flex items-center gap-2 text-xs sm:text-sm self-end sm:self-auto"
                         title="Kopiuj kod"
                       >
                         {copied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
+                        <span className="sm:hidden">Kopiuj</span>
                       </button>
                     </div>
                     <div className="flex-1 overflow-auto p-4">
@@ -1475,11 +1490,11 @@ CHECK_INTERVAL=${delay || '0.5'}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {/* English OG */}
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <h3 className="text-lg font-medium text-emerald-400">Angielskie OG (500+)</h3>
                       <button 
                         onClick={() => copyToClipboard(ENGLISH_OG.join(', '))}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-md text-xs font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-md text-xs font-medium transition-colors w-full sm:w-auto"
                       >
                         <Copy size={14} /> Kopiuj wszystkie
                       </button>
@@ -1497,11 +1512,11 @@ CHECK_INTERVAL=${delay || '0.5'}
 
                   {/* Polish OG */}
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <h3 className="text-lg font-medium text-blue-400">Polskie OG (500+)</h3>
                       <button 
                         onClick={() => copyToClipboard(POLISH_OG.join(', '))}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-md text-xs font-medium transition-colors"
+                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-md text-xs font-medium transition-colors w-full sm:w-auto"
                       >
                         <Copy size={14} /> Kopiuj wszystkie
                       </button>
@@ -1519,60 +1534,117 @@ CHECK_INTERVAL=${delay || '0.5'}
                 </div>
 
                 {/* Name Generator Section */}
-                <div className="bg-[#151515] border border-emerald-500/20 rounded-2xl p-8 shadow-xl mt-8">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-500">
-                      <Zap size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-semibold text-white">Generator Nazw Losowych</h3>
-                      <p className="text-gray-400 text-sm">Stwórz własne kombinacje liter do monitorowania.</p>
+                <div className="bg-gradient-to-br from-[#151515] to-[#1a1a1a] border border-emerald-500/20 rounded-3xl p-8 shadow-2xl mt-12 relative overflow-hidden">
+                  {/* Decorative background element */}
+                  <div className="absolute top-0 right-0 -mt-16 -mr-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                  
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 relative z-10">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl text-black shadow-lg shadow-emerald-500/20">
+                        <Wand2 size={28} />
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-bold text-white tracking-tight">AI Generator Nazw</h3>
+                        <p className="text-emerald-400/80 text-sm mt-1">Wykorzystaj sztuczną inteligencję do stworzenia unikalnych nazw.</p>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Kategoria</label>
-                      <select 
-                        value={genCategory}
-                        onChange={(e) => setGenCategory(e.target.value)}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all"
-                      >
-                        {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                      </select>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative z-10">
+                    {/* Controls */}
+                    <div className="md:col-span-2 space-y-6 bg-black/40 p-6 rounded-2xl border border-white/5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="space-y-3">
+                          <label className="flex items-center gap-2 text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                            <FileText size={14} className="text-emerald-500" />
+                            Kategoria
+                          </label>
+                          <div className="relative">
+                            <select 
+                              value={genCategory}
+                              onChange={(e) => setGenCategory(e.target.value)}
+                              className="w-full bg-[#111] border border-white/10 rounded-xl pl-4 pr-10 py-3.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all appearance-none cursor-pointer"
+                            >
+                              {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                            </select>
+                            <ChevronRight size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 rotate-90 pointer-events-none" />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <label className="flex items-center gap-2 text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                            <SlidersHorizontal size={14} className="text-emerald-500" />
+                            Ilość nazw
+                          </label>
+                          <div className="relative">
+                            <select 
+                              value={genCount}
+                              onChange={(e) => setGenCount(parseInt(e.target.value))}
+                              className="w-full bg-[#111] border border-white/10 rounded-xl pl-4 pr-10 py-3.5 text-sm text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all appearance-none cursor-pointer"
+                            >
+                              {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} sztuk</option>)}
+                            </select>
+                            <ChevronRight size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 rotate-90 pointer-events-none" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 pt-2">
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center gap-2 text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                            <Settings size={14} className="text-emerald-500" />
+                            Długość nazwy
+                          </label>
+                          <span className="text-emerald-400 font-mono font-bold bg-emerald-500/10 px-3 py-1 rounded-lg">{genLength} znaków</span>
+                        </div>
+                        <input 
+                          type="range"
+                          min="3"
+                          max="15"
+                          value={genLength}
+                          onChange={(e) => setGenLength(parseInt(e.target.value))}
+                          className="w-full h-2 bg-[#111] rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                        />
+                        <div className="flex justify-between text-[10px] text-gray-500 font-mono px-1">
+                          <span>3</span>
+                          <span>9</span>
+                          <span>15</span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Długość nazwy</label>
-                      <input 
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={genLength}
-                        onChange={(e) => setGenLength(parseInt(e.target.value))}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all"
-                      />
+
+                    {/* Action Area */}
+                    <div className="flex flex-col justify-center gap-4">
+                      <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-5 text-center h-full flex flex-col justify-between">
+                        <div>
+                          <Sparkles size={24} className="text-emerald-400 mx-auto mb-3" />
+                          <p className="text-xs text-emerald-400/80 leading-relaxed mb-4">
+                            Sztuczna inteligencja wygeneruje unikalne nazwy na podstawie wybranych parametrów i automatycznie doda je do Twojej listy.
+                          </p>
+                        </div>
+                        <button 
+                          onClick={generateRandomNames}
+                          disabled={isGenerating}
+                          className="w-full relative group overflow-hidden bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-4 px-6 rounded-xl transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+                        >
+                          <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shimmer"></div>
+                          <span className="relative flex items-center justify-center gap-2">
+                            {isGenerating ? (
+                              <>
+                                <RefreshCw size={18} className="animate-spin" />
+                                Generowanie...
+                              </>
+                            ) : (
+                              <>
+                                <Wand2 size={18} />
+                                Generuj Nazwy
+                              </>
+                            )}
+                          </span>
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">Ilość nazw</label>
-                      <select 
-                        value={genCount}
-                        onChange={(e) => setGenCount(parseInt(e.target.value))}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-all"
-                      >
-                        {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} sztuk</option>)}
-                      </select>
-                    </div>
-                    <button 
-                      onClick={generateRandomNames}
-                      disabled={isGenerating}
-                      className="bg-emerald-500 hover:bg-emerald-600 text-black font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isGenerating ? 'Generowanie...' : 'Generuj i dodaj'}
-                    </button>
                   </div>
-                  <p className="text-[10px] text-gray-500 mt-4 italic">
-                    * Wygenerowane nazwy zostaną automatycznie dopisane do Twojej listy w konfiguratorze.
-                  </p>
                 </div>
               </div>
             )}

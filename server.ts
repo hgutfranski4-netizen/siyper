@@ -166,7 +166,7 @@ async function startServer() {
         useIPV6: false,
       };
 
-      if (config.useProxy === 'true' && config.proxyHost && config.proxyPort) {
+      if ((config.useProxy === 'true' || config.useProxy === true) && config.proxyHost && config.proxyPort) {
         clientOptions.proxy = {
           ip: config.proxyHost,
           port: parseInt(config.proxyPort),
@@ -210,7 +210,7 @@ async function startServer() {
           phoneCode: code
         }));
       } catch (error: any) {
-        if (error.errorMessage === 'SESSION_PASSWORD_NEEDED') {
+        if (error?.errorMessage === 'SESSION_PASSWORD_NEEDED') {
           if (!password) {
             return res.json({ requiresPassword: true });
           }
@@ -250,7 +250,7 @@ async function startServer() {
         useIPV6: false,
       };
 
-      if (config.useProxy === 'true' && config.proxyHost && config.proxyPort) {
+      if ((config.useProxy === 'true' || config.useProxy === true) && config.proxyHost && config.proxyPort) {
         clientOptions.proxy = {
           ip: config.proxyHost,
           port: parseInt(config.proxyPort),
@@ -271,54 +271,66 @@ async function startServer() {
 
   // API Route: Get Bot Status
   app.get("/api/status", (req, res) => {
-    if (sniperBot) {
-      const status = sniperBot.getStatus();
-      res.json({ 
-        isBotRunning: status.isBotRunning, 
-        botMode, 
-        botLogs: botLogs, 
-        botStats: status.botStats 
-      });
-    } else {
-      res.json({ isBotRunning, botMode, botLogs, botStats });
+    try {
+      if (sniperBot) {
+        const status = sniperBot.getStatus();
+        res.json({ 
+          isBotRunning: status.isBotRunning, 
+          botMode, 
+          botLogs: botLogs, 
+          botStats: status.botStats 
+        });
+      } else {
+        res.json({ isBotRunning, botMode, botLogs, botStats });
+      }
+    } catch (error: any) {
+      console.error("[API ERROR] /api/status", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
   // API Route: Start/Stop Bot
   app.post("/api/bot/:action", express.json(), async (req, res) => {
-    const { action } = req.params;
-    const { mode, config } = req.body;
-    
-    if (action === 'start') {
-      if (isBotRunning) return res.json({ isBotRunning, botMode });
+    try {
+      const { action } = req.params;
+      const { mode, config } = req.body;
       
-      isBotRunning = true;
-      botMode = mode || 'capture';
-      botLogs.push(`[SYSTEM] Bot uruchomiony w trybie: ${botMode}.`);
-      
-      // Save config to DB
-      for (const [key, value] of Object.entries(config)) {
-        await db.run('INSERT OR REPLACE INTO bot_config (key, value) VALUES (?, ?)', [key, String(value)]);
+      if (action === 'start') {
+        if (isBotRunning) return res.json({ isBotRunning, botMode });
+        
+        isBotRunning = true;
+        botMode = mode || 'capture';
+        botLogs.push(`[SYSTEM] Bot uruchomiony w trybie: ${botMode}.`);
+        
+        // Save config to DB
+        if (config) {
+          for (const [key, value] of Object.entries(config)) {
+            await db.run('INSERT OR REPLACE INTO bot_config (key, value) VALUES (?, ?)', [key, String(value)]);
+          }
+        }
+        bot = null; // Reset bot instance
+  
+        // Initialize and start Node.js bot
+        sniperBot = new SniperBot(config, (log) => {
+          botLogs.push(log);
+          if (botLogs.length > 100) botLogs.shift();
+        });
+        
+        await sniperBot.start();
+        
+      } else if (action === 'stop') {
+        if (sniperBot) {
+          sniperBot.stop();
+          sniperBot = null;
+        }
+        isBotRunning = false;
+        botLogs.push('[SYSTEM] Bot zatrzymany.');
       }
-      bot = null; // Reset bot instance
-
-      // Initialize and start Node.js bot
-      sniperBot = new SniperBot(config, (log) => {
-        botLogs.push(log);
-        if (botLogs.length > 100) botLogs.shift();
-      });
-      
-      await sniperBot.start();
-      
-    } else if (action === 'stop') {
-      if (sniperBot) {
-        sniperBot.stop();
-        sniperBot = null;
-      }
-      isBotRunning = false;
-      botLogs.push('[SYSTEM] Bot zatrzymany.');
+      res.json({ isBotRunning, botMode });
+    } catch (error: any) {
+      console.error("[API ERROR] /api/bot/:action", error);
+      res.status(500).json({ error: error.message });
     }
-    res.json({ isBotRunning, botMode });
   });
 
   // API Route: Monitor Fragment (updated to use state)
