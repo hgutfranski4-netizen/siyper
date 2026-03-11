@@ -13,10 +13,17 @@ import { StringSession } from "telegram/sessions/index.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
-  const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+const app = express();
+const PORT = Number(process.env.PORT) || 3000;
 
+console.log(`[SYSTEM] Initializing server. NODE_ENV: ${process.env.NODE_ENV}, PORT: ${PORT}`);
+
+// Start listening IMMEDIATELY at top level to satisfy Railway
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`[SYSTEM] Server is now listening on http://0.0.0.0:${PORT}`);
+});
+
+async function startServer() {
   // Error handling for the whole process
   process.on('uncaughtException', (err) => {
     console.error('[FATAL ERROR] Uncaught Exception:', err);
@@ -26,16 +33,18 @@ async function startServer() {
     console.error('[FATAL ERROR] Unhandled Rejection at:', promise, 'reason:', reason);
   });
 
-  console.log(`[SYSTEM] Initializing server on port ${PORT}...`);
-
   // Health check route - MUST be first
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", uptime: process.uptime(), env: process.env.NODE_ENV });
   });
 
-  // Start listening early to satisfy Railway health checks
-  const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[SYSTEM] Server is now listening on http://0.0.0.0:${PORT}`);
+  // Simple root route for diagnostics
+  app.get("/", (req, res, next) => {
+    if (process.env.NODE_ENV === "production") {
+      next(); // Fall through to static serving
+    } else {
+      res.send("SniperBot Server is running (Development Mode)");
+    }
   });
 
   try {
